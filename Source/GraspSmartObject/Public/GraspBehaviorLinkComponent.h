@@ -7,6 +7,8 @@
 #include "GameplayAbilitySpecHandle.h"
 #include "GraspBehaviorLinkComponent.generated.h"
 
+GRASPSMARTOBJECT_API DECLARE_LOG_CATEGORY_EXTERN(LogGraspSmartObject, Log, All);
+
 class UGameplayBehavior;
 class UAbilitySystemComponent;
 struct FAbilityEndedData;

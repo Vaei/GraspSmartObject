@@ -10,10 +10,6 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(GameplayBehavior_GraspAbility)
 
-// Defined in GraspBehaviorLinkComponent.cpp
-DECLARE_LOG_CATEGORY_EXTERN(LogGraspSmartObject, Log, All);
-
-
 UGameplayBehaviorConfig_GraspAbility::UGameplayBehaviorConfig_GraspAbility()
 {
 	BehaviorClass = UGameplayBehavior_GraspAbility::StaticClass();

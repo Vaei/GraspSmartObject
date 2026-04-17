@@ -7,7 +7,6 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(GraspBehaviorLinkComponent)
 
-DECLARE_LOG_CATEGORY_EXTERN(LogGraspSmartObject, Log, All);
 DEFINE_LOG_CATEGORY(LogGraspSmartObject);
 
 UGraspBehaviorLinkComponent::UGraspBehaviorLinkComponent()
