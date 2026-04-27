@@ -1,7 +1,7 @@
 # Grasp Smart Object
 
 > [!IMPORTANT]
-> Bridges Grasp interaction abilities with SmartObject GameplayBehaviors
+> Bridges [Grasp](https://github.com/Vaei/Grasp) interaction abilities with SmartObject GameplayBehaviors
 > <br>AI and players share the same Grasp abilities for interactions like sitting, opening doors, etc.
 > <br>Depends on: Grasp, SmartObjects, GameplayBehaviors, GameplayAbilities
 
