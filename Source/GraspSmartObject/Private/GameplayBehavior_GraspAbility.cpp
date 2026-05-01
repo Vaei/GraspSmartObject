@@ -1,12 +1,14 @@
 // Copyright (c) Jared Taylor
 
 #include "GameplayBehavior_GraspAbility.h"
+#include "AITask_UseGraspGameplayBehavior.h"
 #include "GraspBehaviorLinkComponent.h"
-#include "GraspSmartObjectSlotComponent.h"
 #include "GraspStatics.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "GraspData.h"
+#include "SmartObjectComponent.h"
+#include "SmartObjectSubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(GameplayBehavior_GraspAbility)
 
@@ -32,20 +34,31 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 		return false;
 	}
 
-	// Find the graspable component via slot mapping on the SmartObject actor
-	UGraspSmartObjectSlotComponent* SlotMapping = SmartObjectOwner->FindComponentByClass<UGraspSmartObjectSlotComponent>();
-	if (!SlotMapping)
+	// Resolve the SO instance the AI claimed via the active task's claim handle.
+	const UAITask_UseGraspGameplayBehavior* GraspTask = UAITask_UseGraspGameplayBehavior::GetTriggeringTask();
+	if (!GraspTask)
 	{
-		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - SmartObjectOwner %s has no UGraspSmartObjectSlotComponent"), *GetNameSafe(SmartObjectOwner));
+		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - No active UAITask_UseGraspGameplayBehavior; AI must use that task class to trigger grasp behaviors"));
 		return false;
 	}
 
-	UPrimitiveComponent* GraspableComponent = SlotMapping->GetGraspableForSlot(GraspConfig->SlotGraspableIndex);
-	if (!GraspableComponent)
+	const FSmartObjectClaimHandle& ClaimHandle = GraspTask->GetClaimHandle();
+	USmartObjectSubsystem* SOSubsystem = USmartObjectSubsystem::GetCurrent(SmartObjectOwner->GetWorld());
+	const USmartObjectComponent* SOComponent = SOSubsystem ? SOSubsystem->GetSmartObjectComponent(ClaimHandle) : nullptr;
+	if (!SOComponent)
 	{
-		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - No graspable component found for slot index %d on %s"), GraspConfig->SlotGraspableIndex, *GetNameSafe(SmartObjectOwner));
+		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - Could not resolve SmartObjectComponent from claim handle on %s"), *GetNameSafe(SmartObjectOwner));
 		return false;
 	}
+
+	UPrimitiveComponent* GraspableComponent = Cast<UPrimitiveComponent>(SOComponent->GetAttachParent());
+	if (!GraspableComponent)
+	{
+		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - SmartObjectComponent %s is not attached beneath a graspable component"), *GetNameSafe(SOComponent));
+		return false;
+	}
+
+	const int32 GraspDataIndex = ClaimHandle.SlotHandle.GetSlotIndex();
 
 	CachedGraspableComponent = GraspableComponent;
 
@@ -61,10 +74,10 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 
 	// Check if the ability is already granted via Grasp scanning.
 	// If not, grant it directly so AI can use it regardless of scanning.
-	const UGraspData* GraspData = UGraspStatics::GetGraspData(GraspableComponent, GraspConfig->GraspDataIndex);
+	const UGraspData* GraspData = UGraspStatics::GetGraspData(GraspableComponent, GraspDataIndex);
 	if (!GraspData)
 	{
-		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - No GraspData at index %d on %s"), GraspConfig->GraspDataIndex, *GetNameSafe(GraspableComponent));
+		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - No GraspData at index %d on %s"), GraspDataIndex, *GetNameSafe(GraspableComponent));
 		return false;
 	}
 
@@ -76,7 +89,7 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 	}
 
 	// Grant the ability if not already present
-	FGameplayAbilitySpec* ExistingSpec = UGraspStatics::FindGraspAbilitySpec(ASC, GraspableComponent, GraspConfig->GraspDataIndex);
+	FGameplayAbilitySpec* ExistingSpec = UGraspStatics::FindGraspAbilitySpec(ASC, GraspableComponent, GraspDataIndex);
 	if (!ExistingSpec)
 	{
 		FGameplayAbilitySpec NewSpec(AbilityClass, 1, INDEX_NONE, &Avatar);
@@ -89,7 +102,7 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 
 	// Activate the ability
 	const bool bActivated = UGraspStatics::TryActivateGraspAbility(&Avatar, GraspableComponent,
-		EGraspAbilityComponentSource::EventData, GraspConfig->GraspDataIndex);
+		EGraspAbilityComponentSource::EventData, GraspDataIndex);
 
 	if (!bActivated)
 	{
@@ -99,7 +112,7 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 	}
 
 	// Get the ability spec handle for the link
-	FGameplayAbilitySpec* Spec = UGraspStatics::FindGraspAbilitySpec(ASC, GraspableComponent, GraspConfig->GraspDataIndex);
+	FGameplayAbilitySpec* Spec = UGraspStatics::FindGraspAbilitySpec(ASC, GraspableComponent, GraspDataIndex);
 	if (!Spec)
 	{
 		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - Could not find ability spec after activation"));

@@ -21,24 +21,18 @@ class GRASPSMARTOBJECT_API UGameplayBehaviorConfig_GraspAbility : public UGamepl
 
 public:
 	UGameplayBehaviorConfig_GraspAbility();
-
-	/** Index into the SmartObject actor's UGraspSmartObjectSlotComponent mappings to find the graspable component for this slot. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grasp")
-	int32 SlotGraspableIndex = 0;
-
-	/** GraspData index on the graspable component. Usually 0 unless the component has multiple interaction options. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grasp")
-	int32 GraspDataIndex = 0;
 };
 
 /**
  * GameplayBehavior that activates a Grasp ability when triggered by AI via SmartObjects.
  *
  * Lifecycle:
- * 1. AI claims SmartObject slot, UAITask_UseGameplayBehaviorSmartObject triggers this behavior
- * 2. Trigger() finds the graspable component via UGraspSmartObjectSlotComponent, activates the Grasp ability
- * 3. Registers a bidirectional link via UGraspBehaviorLinkComponent
- * 4. When either the behavior or ability ends, the other is cleaned up automatically
+ * 1. AI claims a SmartObject slot via UAITask_UseGraspGameplayBehavior (subclass of the engine task).
+ * 2. The task triggers this behavior; Trigger reads the active task's claim handle to resolve the
+ *    SmartObjectComponent. The graspable is the SO's attachment parent. The slot index from the
+ *    claim handle is the GraspData index (positional mapping enforced by AhoyGraspableValidator).
+ * 3. Registers a bidirectional link via UGraspBehaviorLinkComponent.
+ * 4. When either the behavior or ability ends, the other is cleaned up automatically.
  */
 UCLASS(BlueprintType, Blueprintable)
 class GRASPSMARTOBJECT_API UGameplayBehavior_GraspAbility : public UGameplayBehavior

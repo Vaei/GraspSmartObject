@@ -27,6 +27,7 @@ public class GraspSmartObject : ModuleRules
 			new string[]
 			{
 				"AIModule",
+				"GameplayBehaviorSmartObjectsModule",
 			}
 		);
 	}
