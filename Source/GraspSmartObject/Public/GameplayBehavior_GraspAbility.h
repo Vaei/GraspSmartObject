@@ -46,7 +46,4 @@ public:
 private:
 	/** The link ID registered with UGraspBehaviorLinkComponent, for cleanup on EndBehavior. */
 	uint32 ActiveLinkId = 0;
-
-	/** Cached graspable component for ability lock cleanup. */
-	TWeakObjectPtr<UPrimitiveComponent> CachedGraspableComponent;
 };

@@ -4,6 +4,7 @@
 #include "AITask_UseGraspGameplayBehavior.h"
 #include "GraspBehaviorLinkComponent.h"
 #include "GraspStatics.h"
+#include "GraspTags.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "GraspData.h"
@@ -60,9 +61,6 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 
 	const int32 GraspDataIndex = ClaimHandle.SlotHandle.GetSlotIndex();
 
-	CachedGraspableComponent = GraspableComponent;
-
-	// The ASC should be on the Avatar (character)
 	const IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(&Avatar);
 	if (!ASI || !ASI->GetAbilitySystemComponent())
 	{
@@ -72,8 +70,6 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 
 	UAbilitySystemComponent* ASC = ASI->GetAbilitySystemComponent();
 
-	// Check if the ability is already granted via Grasp scanning.
-	// If not, grant it directly so AI can use it regardless of scanning.
 	const UGraspData* GraspData = UGraspStatics::GetGraspData(GraspableComponent, GraspDataIndex);
 	if (!GraspData)
 	{
@@ -88,51 +84,62 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 		return false;
 	}
 
-	// Grant the ability if not already present
-	FGameplayAbilitySpec* ExistingSpec = UGraspStatics::FindGraspAbilitySpec(ASC, GraspableComponent, GraspDataIndex);
-	if (!ExistingSpec)
+	// Grant the ability if it isn't already on this NPC's ASC. Player-side scanner-driven grant /
+	// remove (UGraspComponent) is irrelevant here: AIControllers never have a UGraspComponent, so
+	// no scanner ever grants or yanks abilities on NPC ASCs. We grant directly and let the spec
+	// persist on the ASC for reuse on subsequent interactions.
+	if (!UGraspStatics::FindGraspAbilitySpec(ASC, GraspableComponent, GraspDataIndex))
 	{
 		FGameplayAbilitySpec NewSpec(AbilityClass, 1, INDEX_NONE, &Avatar);
 		NewSpec.SourceObject = GraspableComponent;
 		ASC->GiveAbility(NewSpec);
 	}
 
-	// Lock the ability so Grasp scanning doesn't remove it mid-interaction
-	UGraspStatics::AddGraspAbilityLock(&Avatar, GraspableComponent);
+	FGameplayAbilitySpec* Spec = UGraspStatics::FindGraspAbilitySpec(ASC, GraspableComponent, GraspDataIndex);
+	if (!Spec)
+	{
+		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - Could not find ability spec after grant on %s"), *GetNameSafe(&Avatar));
+		return false;
+	}
 
-	// Activate the ability
-	const bool bActivated = UGraspStatics::TryActivateGraspAbility(&Avatar, GraspableComponent,
-		EGraspAbilityComponentSource::EventData, GraspDataIndex);
+	// Activate the ability via the ASC directly. We deliberately do NOT route through
+	// UGraspStatics::TryActivateGraspAbility because that path requires a UGraspComponent on the
+	// SourceActor's controller (FindGraspComponentForActor walks Pawn -> PlayerState -> Controller
+	// and ensure-fails if missing). UGraspComponent is the player-side scanner; AIControllers
+	// don't have one. Bypassing it skips the player-only Pre/PostActivate notifications and
+	// ability-lock tracking, neither of which apply to NPCs.
+	FGameplayAbilityActorInfo* ActorInfo = ASC->AbilityActorInfo.Get();
+	FGameplayEventData Payload;
+	bool bActivated = false;
+
+	if (UGraspStatics::PrepareGraspAbilityDataPayload(GraspableComponent, Payload, &Avatar, ActorInfo,
+		EGraspAbilityComponentSource::EventData, GraspDataIndex))
+	{
+		bActivated = ASC->TriggerAbilityFromGameplayEvent(Spec->Handle, ActorInfo,
+			FGraspTags::Grasp_Interact_Activate, &Payload, *ASC);
+	}
+	else
+	{
+		bActivated = ASC->TryActivateAbility(Spec->Handle, /*bAllowRemoteActivation*/ true);
+	}
 
 	if (!bActivated)
 	{
 		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - Failed to activate Grasp ability on %s"), *GetNameSafe(&Avatar));
-		UGraspStatics::RemoveGraspAbilityLock(&Avatar, GraspableComponent);
 		return false;
 	}
 
-	// Get the ability spec handle for the link
-	FGameplayAbilitySpec* Spec = UGraspStatics::FindGraspAbilitySpec(ASC, GraspableComponent, GraspDataIndex);
-	if (!Spec)
-	{
-		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - Could not find ability spec after activation"));
-		UGraspStatics::RemoveGraspAbilityLock(&Avatar, GraspableComponent);
-		return false;
-	}
-
-	// Register the bidirectional link
-	UGraspBehaviorLinkComponent* LinkComp = Avatar.FindComponentByClass<UGraspBehaviorLinkComponent>();
-	if (!LinkComp)
-	{
-		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - Avatar %s has no UGraspBehaviorLinkComponent"), *GetNameSafe(&Avatar));
-		// Still works, just no bidirectional cleanup
-	}
-	else
+	// Register the bidirectional link so behavior end -> ability cancel and ability end -> behavior
+	// end stay in sync. The link component lives on the pawn and is the only on-pawn glue needed.
+	if (UGraspBehaviorLinkComponent* LinkComp = Avatar.FindComponentByClass<UGraspBehaviorLinkComponent>())
 	{
 		ActiveLinkId = LinkComp->RegisterLink(this, Spec->Handle, GraspableComponent);
 	}
+	else
+	{
+		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - Avatar %s has no UGraspBehaviorLinkComponent; ability will run but interruption won't propagate"), *GetNameSafe(&Avatar));
+	}
 
-	// Call parent to set up transient state and fire BP events
 	return Super::Trigger(Avatar, Config, SmartObjectOwner);
 }
 
@@ -140,7 +147,6 @@ void UGameplayBehavior_GraspAbility::EndBehavior(AActor& Avatar, const bool bInt
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UGameplayBehavior_GraspAbility::EndBehavior);
 
-	// End the link (which may cancel the ability if it's still running)
 	if (ActiveLinkId != 0)
 	{
 		if (UGraspBehaviorLinkComponent* LinkComp = Avatar.FindComponentByClass<UGraspBehaviorLinkComponent>())
@@ -149,13 +155,6 @@ void UGameplayBehavior_GraspAbility::EndBehavior(AActor& Avatar, const bool bInt
 		}
 		ActiveLinkId = 0;
 	}
-
-	// Remove the ability lock
-	if (UPrimitiveComponent* Graspable = CachedGraspableComponent.Get())
-	{
-		UGraspStatics::RemoveGraspAbilityLock(&Avatar, Graspable);
-	}
-	CachedGraspableComponent.Reset();
 
 	Super::EndBehavior(Avatar, bInterrupted);
 }
