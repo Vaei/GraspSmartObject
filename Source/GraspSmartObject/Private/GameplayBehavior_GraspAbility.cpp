@@ -140,7 +140,14 @@ bool UGameplayBehavior_GraspAbility::Trigger(AActor& Avatar, const UGameplayBeha
 		UE_LOG(LogGraspSmartObject, Warning, TEXT("UGameplayBehavior_GraspAbility::Trigger - Avatar %s has no UGraspBehaviorLinkComponent; ability will run but interruption won't propagate"), *GetNameSafe(&Avatar));
 	}
 
-	return Super::Trigger(Avatar, Config, SmartObjectOwner);
+	// Skip Super::Trigger: the base implementation only dispatches K2_OnTriggered* BP events and
+	// returns bTransientIsActive, which stays false unless one of the bTrigger* flags is set
+	// (those auto-flip only for BP subclasses that implement the corresponding event). Stamp the
+	// transient state ourselves so callers see the trigger as successful.
+	TransientAvatar = &Avatar;
+	TransientSmartObjectOwner = SmartObjectOwner;
+	bTransientIsActive = true;
+	return true;
 }
 
 void UGameplayBehavior_GraspAbility::EndBehavior(AActor& Avatar, const bool bInterrupted)
