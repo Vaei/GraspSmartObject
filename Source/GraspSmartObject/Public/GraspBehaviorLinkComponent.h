@@ -66,6 +66,12 @@ public:
 	/** Find the LinkId for a given ability spec handle. Returns 0 if not found. */
 	uint32 FindLinkByAbilityHandle(FGameplayAbilitySpecHandle Handle) const;
 
+	/** Find the LinkId for a given graspable component. Returns 0 if not found. */
+	uint32 FindLinkByGraspable(const UPrimitiveComponent* GraspableComponent) const;
+
+	/** Get the ability spec handle for a given LinkId. Returns an invalid handle if the link does not exist. */
+	FGameplayAbilitySpecHandle GetAbilityHandle(uint32 LinkId) const;
+
 	/** Check if any links are active. */
 	bool HasActiveLinks() const { return ActiveLinks.Num() > 0; }
 

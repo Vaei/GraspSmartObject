@@ -184,3 +184,29 @@ uint32 UGraspBehaviorLinkComponent::FindLinkByAbilityHandle(FGameplayAbilitySpec
 	}
 	return 0;
 }
+
+uint32 UGraspBehaviorLinkComponent::FindLinkByGraspable(const UPrimitiveComponent* GraspableComponent) const
+{
+	if (!GraspableComponent)
+	{
+		return 0;
+	}
+
+	for (const auto& Pair : ActiveLinks)
+	{
+		if (Pair.Value.GraspableComponent.Get() == GraspableComponent)
+		{
+			return Pair.Key;
+		}
+	}
+	return 0;
+}
+
+FGameplayAbilitySpecHandle UGraspBehaviorLinkComponent::GetAbilityHandle(uint32 LinkId) const
+{
+	if (const FGraspBehaviorLink* Link = ActiveLinks.Find(LinkId))
+	{
+		return Link->AbilityHandle;
+	}
+	return FGameplayAbilitySpecHandle();
+}
